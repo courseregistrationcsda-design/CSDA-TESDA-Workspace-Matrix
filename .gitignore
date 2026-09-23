@@ -1,0 +1,15 @@
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Node / tooling (only needed to recompile Tailwind)
+node_modules/
+dist/
+*.log
+.npm/
