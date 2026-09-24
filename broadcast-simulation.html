@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VGD Broadcast — Live Multi-Device Simulation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #EDEDF2; color: #1C1C1E; padding: 28px 16px 40px; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+  h1 span { color: #AEAEB2; }
+  .sub { font-size: 12px; color: #8E8E93; margin: 6px 0 22px; }
+  .stage { display: flex; gap: 28px; justify-content: center; flex-wrap: wrap; }
+  .device { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .dev-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #636366; }
+  .phone { width: 250px; height: 508px; background: #1C1C1E; border-radius: 2.4rem; padding: 10px; box-shadow: 0 18px 40px rgba(0,0,0,0.18); position: relative; }
+  .screen { position: relative; width: 100%; height: 100%; background: #FFFFFF; border-radius: 1.9rem; overflow: hidden; display: flex; flex-direction: column; }
+  .notch { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: 86px; height: 20px; background: #1C1C1E; border-radius: 12px; z-index: 30; }
+  .statusbar { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px 4px; font-size: 10px; font-weight: 700; color: #1C1C1E; }
+  .appbar { padding: 10px 14px 8px; border-bottom: 1px solid #F2F2F7; }
+  .appbar b { font-size: 12px; }
+  .appbar p { font-size: 9px; color: #8E8E93; margin-top: 1px; }
+  .body { flex: 1; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; position: relative; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 800; padding: 4px 8px; border-radius: 999px; background: #F2F2F7; color: #636366; width: fit-content; }
+  .chip.on { background: #E8F8EC; color: #16A34A; }
+  .chip.off { background: #F2F2F7; color: #8E8E93; }
+  .card { background: #F9F9FB; border: 1px solid #E5E5EA; border-radius: 14px; padding: 12px; font-size: 10.5px; line-height: 1.45; }
+  .card h3 { font-size: 12px; margin-bottom: 5px; }
+  textarea { width: 100%; height: 74px; resize: none; border: 1px solid #E5E5EA; border-radius: 10px; padding: 8px; font-size: 10.5px; font-family: inherit; background: #fff; outline: none; }
+  textarea:focus { border-color: #4A1525; }
+  .btn { display: block; width: 100%; border: 0; border-radius: 10px; padding: 10px 0; font-size: 11px; font-weight: 800; cursor: pointer; font-family: inherit; transition: opacity .15s; }
+  .btn:active { opacity: .8; }
+  .btn-red { background: #4A1525; color: #fff; }
+  .btn-blue { background: #0A84FF; color: #fff; }
+  .btn-gray { background: #E5E5EA; color: #1C1C1E; }
+  .row { display: flex; gap: 8px; }
+  .hint { font-size: 9px; color: #C7C7CC; }
+  /* permission ask (in-app) */
+  .ask { position: absolute; inset: 0; background: rgba(0,0,0,0.28); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 20; padding: 18px; }
+  .ask.show { display: flex; }
+  .ask-card { background: #fff; border-radius: 16px; padding: 16px; text-align: center; width: 100%; }
+  .ask-card .ico { font-size: 22px; }
+  .ask-card h4 { font-size: 12.5px; margin: 6px 0 4px; }
+  .ask-card p { font-size: 9.5px; color: #8E8E93; line-height: 1.5; margin-bottom: 10px; }
+  /* native permission alert replica */
+  .native { position: absolute; inset: 0; background: rgba(0,0,0,0.25); display: none; align-items: center; justify-content: center; z-index: 25; }
+  .native.show { display: flex; }
+  .native-card { background: rgba(250,250,250,0.96); border-radius: 14px; width: 78%; text-align: center; overflow: hidden; font-family: -apple-system, system-ui, sans-serif; }
+  .native-card .nt { padding: 14px 12px 10px; font-size: 11px; font-weight: 700; }
+  .native-card .nb { display: flex; border-top: 0.5px solid #C7C7CC; }
+  .native-card .nb button { flex: 1; background: none; border: 0; padding: 9px 0; font-size: 11px; color: #0A84FF; cursor: pointer; font-family: inherit; }
+  .native-card .nb button:first-child { border-right: 0.5px solid #C7C7CC; font-weight: 400; }
+  .native-card .nb button:last-child { font-weight: 700; }
+  /* system notification banner (slides from top) */
+  .banner { position: absolute; top: 8px; left: 8px; right: 8px; background: rgba(255,255,255,0.97); border: 1px solid #E5E5EA; border-radius: 14px; padding: 8px 10px; z-index: 22; box-shadow: 0 8px 20px rgba(0,0,0,0.12); transform: translateY(-140%); transition: transform .35s cubic-bezier(.2,.9,.3,1.2); display: flex; gap: 8px; align-items: flex-start; }
+  .banner.show { transform: translateY(0); }
+  .banner .bico { width: 22px; height: 22px; border-radius: 6px; background: #8E2131; color: #fff; font-size: 9px; font-weight: 900; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .banner b { font-size: 9.5px; display: block; }
+  .banner p { font-size: 9px; color: #3A3A3C; line-height: 1.35; }
+  /* VGD message popup */
+  .pop { position: absolute; inset: 0; background: rgba(0,0,0,0.28); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 24; padding: 16px; }
+  .pop.show { display: flex; }
+  .pop-card { background: #fff; border-radius: 16px; padding: 14px; width: 100%; text-align: center; animation: popin .28s cubic-bezier(.2,.9,.3,1.25); }
+  @keyframes popin { from { transform: scale(.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .pop-card .ttl { font-size: 12.5px; font-weight: 900; }
+  .pop-card .msg { font-size: 10.5px; color: #1C1C1E; line-height: 1.5; margin: 7px 0 10px; }
+  .waitstate { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #C7C7CC; font-weight: 600; }
+  .lat { position: absolute; bottom: 10px; left: 0; right: 0; text-align: center; font-size: 8.5px; font-weight: 800; color: #16A34A; }
+  /* console */
+  .console { margin-top: 26px; background: #111114; border-radius: 14px; padding: 14px 16px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.7; color: #D1D1D6; min-height: 132px; max-height: 220px; overflow-y: auto; }
+  .console .t { color: #16A34A; }
+  .console .n { color: #FF9F0A; }
+  .controls { display: flex; gap: 10px; justify-content: center; margin-top: 18px; }
+  .controls .btn { width: auto; padding: 11px 22px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>VGD Broadcast — <span>Live Multi-Device Simulation</span></h1>
+  <p class="sub">Watch students receive the trainer's broadcast in realtime — notification permission flow, “VGD message” pop-out, and system notification banners. Interactive: type a message and press Broadcast, or run the full scripted flow.</p>
+
+  <div class="stage">
+    <!-- TRAINER -->
+    <div class="device">
+      <div class="dev-label">Trainer · CONSOLE</div>
+      <div class="phone"><div class="screen">
+        <div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span>▲ ▮</span></div>
+        <div class="appbar"><b>🔐 CONSOLE</b><p>Instructor unlocked · Global Class Announcement</p></div>
+        <div class="body">
+          <div class="card">
+            <h3>Global Class Announcement</h3>
+            <textarea id="msg">Exam moved to Friday — bring your portfolio mockups for critiquing.</textarea>
+            <div style="height:8px"></div>
+            <button class="btn btn-red" id="broadcastBtn">📣 Broadcast VGD Message</button>
+            <p class="hint" style="margin-top:6px">Dispatches to every student device via the sync relay.</p>
+          </div>
+          <div class="chip on" id="trainerChip">● relay online</div>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- STUDENT A -->
+    <div class="device">
+      <div class="dev-label">Student A · iPhone (installed)</div>
+      <div class="phone"><div class="screen" id="screenA">
+        <div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span>▲ ▮</span></div>
+        <div class="appbar"><b>CSDA-TESDA Workspace Matrix</b><p>Student launcher · VGD NC III</p></div>
+        <div class="body">
+          <div class="chip off" id="chipA">🔔 Notifications: not set</div>
+          <div class="waitstate" id="waitA">waiting for broadcasts…</div>
+          <div class="lat" id="latA"></div>
+        </div>
+        <div class="banner" id="bannerA"><div class="bico">VGD</div><div><b>VGD message</b><p id="bannerTxtA"></p></div></div>
+        <div class="pop" id="popA"><div class="pop-card">
+          <div class="ttl">VGD message</div>
+          <div class="msg" id="popTxtA"></div>
+          <button class="btn btn-blue" onclick="hide('popA')">Acknowledge</button>
+        </div></div>
+        <div class="ask show" id="askA"><div class="ask-card">
+          <div class="ico">🔔</div><h4>Allow Notifications?</h4>
+          <p>VGD would like to send you class announcements and broadcast messages from your trainer — even when the app is closed.</p>
+          <div class="row">
+            <button class="btn btn-gray" onclick="decline('A')">Don't Allow</button>
+            <button class="btn btn-red" onclick="askNative('A')">Allow</button>
+          </div>
+        </div></div>
+        <div class="native" id="nativeA"><div class="native-card">
+          <div class="nt">“VGD” Would Like to Send You Notifications</div>
+          <div class="nb"><button onclick="nativeDeny('A')">Don't Allow</button><button onclick="nativeAllow('A')">Allow</button></div>
+        </div></div>
+      </div></div>
+    </div>
+
+    <!-- STUDENT B -->
+    <div class="device">
+      <div class="dev-label">Student B · Android (installed)</div>
+      <div class="phone"><div class="screen" id="screenB">
+        <div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span>▲ ▮</span></div>
+        <div class="appbar"><b>CSDA-TESDA Workspace Matrix</b><p>Student launcher · VGD NC III</p></div>
+        <div class="body">
+          <div class="chip off" id="chipB">🔔 Notifications: not set</div>
+          <div class="waitstate" id="waitB">waiting for broadcasts…</div>
+          <div class="lat" id="latB"></div>
+        </div>
+        <div class="banner" id="bannerB"><div class="bico">VGD</div><div><b>VGD message</b><p id="bannerTxtB"></p></div></div>
+        <div class="pop" id="popB"><div class="pop-card">
+          <div class="ttl">VGD message</div>
+          <div class="msg" id="popTxtB"></div>
+          <button class="btn btn-blue" onclick="hide('popB')">Acknowledge</button>
+        </div></div>
+        <div class="ask show" id="askB"><div class="ask-card">
+          <div class="ico">🔔</div><h4>Allow Notifications?</h4>
+          <p>VGD would like to send you class announcements and broadcast messages from your trainer — even when the app is closed.</p>
+          <div class="row">
+            <button class="btn btn-gray" onclick="decline('B')">Don't Allow</button>
+            <button class="btn btn-red" onclick="askNative('B')">Allow</button>
+          </div>
+        </div></div>
+        <div class="native" id="nativeB"><div class="native-card">
+          <div class="nt">“VGD” Would Like to Send You Notifications</div>
+          <div class="nb"><button onclick="nativeDeny('B')">Don't Allow</button><button onclick="nativeAllow('B')">Allow</button></div>
+        </div></div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-red" onclick="autoRun()" id="autoBtn">▶ Auto-run full simulation</button>
+    <button class="btn btn-gray" onclick="resetSim()">↺ Reset</button>
+  </div>
+
+  <div class="console" id="log"></div>
+</div>
+
+<script>
+  var t0 = 0;
+  var notif = { A: false, B: false };
+  var timers = [];
+  function $(id) { return document.getElementById(id); }
+  function log(cls, text) {
+    var el = $("log");
+    var stamp = t0 ? ("t+" + String(Date.now() - t0).padStart(4, "0") + "ms") : "  ··· ";
+    el.innerHTML += '<div><span class="t">' + stamp + '</span> ' + text + "</div>";
+    el.scrollTop = el.scrollHeight;
+  }
+  function hide(id) { $(id).classList.remove("show"); }
+  function show(id) { $(id).classList.add("show"); }
+
+  function askNative(d) {
+    hide("ask" + d);
+    log("n", "student " + d + ': tapped <b>Allow</b> — system permission dialog opened');
+    setTimeout(function () { show("native" + d); }, 350);
+  }
+  function nativeAllow(d) {
+    hide("native" + d);
+    notif[d] = true;
+    $("chip" + d).className = "chip on";
+    $("chip" + d).textContent = "🔔 Notifications: ON";
+    log("n", "student " + d + ': permission <b>granted</b> — VGD message broadcasts enabled');
+  }
+  function nativeDeny(d) {
+    hide("native" + d);
+    notif[d] = false;
+    $("chip" + d).className = "chip off";
+    $("chip" + d).textContent = "🔔 Notifications: OFF (popup only)";
+    log("n", "student " + d + ': system permission denied — popups only');
+  }
+  function decline(d) {
+    hide("ask" + d);
+    notif[d] = false;
+    $("chip" + d).className = "chip off";
+    $("chip" + d).textContent = "🔔 Notifications: OFF (popup only)";
+    log("n", "student " + d + ': tapped <b>Don\'t Allow</b> — popups only');
+  }
+
+  function deliver(d, text, latency) {
+    timers.push(setTimeout(function () {
+      $("wait" + d).style.display = "none";
+      $("popTxt" + d).textContent = text;
+      $("bannerTxt" + d).textContent = text;
+      show("pop" + d);
+      if (notif[d]) show("banner" + d);
+      $("lat" + d).textContent = "received in +" + latency + "ms (realtime)";
+      log("", "student " + d + ': <b>VGD message</b> popout displayed' + (notif[d] ? " + system notification delivered" : " (notifications off — popup only)") + " — +" + latency + "ms");
+    }, latency));
+  }
+
+  function broadcast(auto) {
+    var text = $("msg").value.trim() || "Exam moved to Friday — bring your portfolio mockups for critiquing.";
+    t0 = Date.now();
+    log("", "trainer: broadcast dispatched → sync relay &nbsp;<span class='n'>(VGD message: " + text + ")</span>");
+    deliver("A", text, 120 + Math.floor(Math.random() * 300));
+    deliver("B", text, 120 + Math.floor(Math.random() * 300));
+  }
+
+  function autoRun() {
+    resetSim(true);
+    $("autoBtn").disabled = true;
+    log("", "── scripted flow: two students open the installed app ──");
+    timers.push(setTimeout(function () {
+      log("", "app: first-run <b>notification permission ask</b> shown to both students");
+    }, 500));
+    timers.push(setTimeout(function () { askNative("A"); }, 1400));
+    timers.push(setTimeout(function () { nativeAllow("A"); }, 2050));
+    timers.push(setTimeout(function () { decline("B"); }, 2550));
+    timers.push(setTimeout(function () {
+      broadcast(true);
+      $("autoBtn").disabled = false;
+    }, 3400));
+  }
+
+  function resetSim(quiet) {
+    timers.forEach(clearTimeout); timers = [];
+    t0 = 0; notif = { A: false, B: false };
+    ["A", "B"].forEach(function (d) {
+      hide("pop" + d); hide("banner" + d); hide("native" + d); show("ask" + d);
+      $("wait" + d).style.display = "flex";
+      $("lat" + d).textContent = "";
+      var c = $("chip" + d); c.className = "chip off"; c.textContent = "🔔 Notifications: not set";
+    });
+    if (!quiet) { $("log").innerHTML = ""; log("", "sim reset — press ▶ Auto-run, or allow permissions and broadcast manually."); }
+  }
+
+  $("broadcastBtn").addEventListener("click", function () { broadcast(false); });
+  resetSim(true);
+  log("", "sim ready — press <b>▶ Auto-run full simulation</b>, or interact with the phones directly.");
+</script>
+</body>
+</html>
