@@ -289,7 +289,10 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
         <!-- INSTALL GUIDANCE (first-run install message — hidden once installed or dismissed) -->
         <div id="installNotice" class="hidden fixed left-4 right-4 bottom-4 sm:left-auto sm:right-4 sm:max-w-sm z-40 ios-blur border border-[#E5E5EA] rounded-2xl px-4 py-3 shadow-xl">
             <p id="installNoticeText" class="text-xs font-medium text-[#1C1C1E] leading-snug">📲 <b>Install CSDA Matrix</b> — tap <b>Share</b>, then <b>Add to Home Screen</b> for full-screen classroom access and live broadcasts.</p>
-            <button type="button" onclick="dismissInstallNotice()" class="mt-2 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg cursor-pointer transition-colors bg-[#F2F2F7] hover:bg-[#E5E5EA] text-[#8E8E93]">Got it</button>
+            <div class="mt-2 flex gap-2">
+                <button type="button" id="installNowBtn" onclick="promptInstallApp()" class="hidden text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg cursor-pointer transition-colors bg-[#007AFF] text-white">📲 Install Now</button>
+                <button type="button" onclick="dismissInstallNotice()" class="text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg cursor-pointer transition-colors bg-[#F2F2F7] hover:bg-[#E5E5EA] text-[#8E8E93]">Got it</button>
+            </div>
         </div>
 
     <!-- TOP NAVIGATION BAR -->
@@ -1555,9 +1558,25 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
             const wrap = document.getElementById("installNotice");
             if (!wrap) return;
             try { window.addEventListener("appinstalled", markAppInstalledNotice); } catch (e) {}
+            try { window.addEventListener("beforeinstallprompt", captureInstallPrompt); } catch (e) {}
             if (isInstalledApp()) return;
             if (safeStore.read("vgd_install_notice") === "dismissed") return;
             wrap.classList.remove("hidden");
+        }
+
+        let deferredInstallPrompt = null;
+        function captureInstallPrompt(e) {
+            try { e.preventDefault(); } catch (err) {}
+            deferredInstallPrompt = e;
+            const btn = document.getElementById("installNowBtn");
+            if (btn) btn.classList.remove("hidden");
+        }
+        function promptInstallApp() {
+            if (!deferredInstallPrompt) return;
+            deferredInstallPrompt.prompt();
+            deferredInstallPrompt = null;
+            const btn = document.getElementById("installNowBtn");
+            if (btn) btn.classList.add("hidden");
         }
 
         function dismissInstallNotice() {
@@ -1567,6 +1586,7 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
         }
 
         function markAppInstalledNotice() {
+            try { window.localStorage.setItem("vgd_installed_flag", "1"); } catch (e) {}
             const wrap = document.getElementById("installNotice");
             const txt = document.getElementById("installNoticeText");
             if (!wrap || !txt) return;
