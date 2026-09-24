@@ -10,8 +10,8 @@
 
 | File | Size | SHA-256 |
 |---|---|---|
-| `CSDA-TESDA Workspace Matrix.html` | 272,676 B | `9c85879714015634ac6dc2854bac6849b7076c18e8d0e9c496674304aa5426c3` |
-| `CSDA-TESDA-Workspace-Matrix.zip` | 123,380 B | `b44ab6977a24a852a0cb9043c15c92bac829e8db969e358d312520a4d04593d8` |
+| `CSDA-TESDA Workspace Matrix.html` | 276,307 B | `368ffc28c037e3a7eafa58e811887f086d4b460a2d95409eb4184a331903668f` |
+| `CSDA-TESDA-Workspace-Matrix.zip` | 124,348 B | `a8b005fe9555e241ead0e446ad05551f5f0705f577bdb233283ed5d647a36a3c` |
 
 > Checksums are re-stamped into this table on every update; run `sha256sum` on the two files
 > beside this manifest to verify.
@@ -22,6 +22,19 @@ SECURITY, .gitignore, package.json, tailwind.config.js, input.css, issue + PR te
 
 ### Change log
 
+- **2026-09-24 — BLANK SLATE + QUIET SYNC (task 35):** users opening the link see real-date
+  content only. (1) **No past messages** — relay subscribes live-only (dropped `?since=all`
+  replay), reconciliation sweep limited to 5 min, and a stale-traffic gate drops anything
+  older than 5 min. (2) **Blank slate** — one-time epoch wipe (2026-09-24) clears prior
+  messages/announcements, cancellations, submissions, day notes, feedback outbox and
+  settings (theme/wallpaper/notif/sound) on every device; identity (name, device id) and
+  the scheduled activities (PHASE_MAP / SESSION_TIME_SLOTS / task database) are retained.
+  Ongoing hygiene: past-day announcements auto-clear and spent cancellations prune on load.
+  (3) **Broadcasts push through** — killed the boot sync-request N×N reply storm (throttled
+  request 1/10 min; ONE random-delayed responder with suppression + 45 s cooldown — proven:
+  3 requests → ≤1 reply); relay backoff now gates only presence/sync-request while instructor
+  state (broadcasts, cancellations, feedback) always attempts and trickle-flushes from the
+  outbox every ~45 s. Dispatch hardened (missing-label guard) with all five task-10 alerts verbatim.
 - **2026-09-23 — WALLPAPER ALL THE WAY BEHIND (task 34):** art layer moved out of the
   calendar card to the first element of `<body>` — `position: fixed; z-index: -1` page
   wallpaper behind everything. The calendar card keeps its pristine opaque `ios-card`

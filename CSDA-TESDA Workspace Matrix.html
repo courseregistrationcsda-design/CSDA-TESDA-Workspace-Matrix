@@ -742,6 +742,21 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
             write(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} }
         };
 
+        // ---- BLANK-SLATE EPOCH (2026-09-24): purge prior messages, cancellations and settings ----
+        // Scheduled activities (PHASE_MAP / SESSION_TIME_SLOTS / task database) live in code and stay.
+        (function () {
+            const EPOCH = "2026-09-24";
+            try {
+                if (localStorage.getItem("vgd_state_epoch") !== EPOCH) {
+                    ["vgd_master_config", "vgd_feedback_outbox", "vgd_submissions", "vgd_daynotes",
+                     "vgd_theme_pref", "vgd_calendar_bg", "vgd_notif_pref", "vgd_sound"].forEach(function (k) {
+                        try { localStorage.removeItem(k); } catch (e) {}
+                    });
+                    localStorage.setItem("vgd_state_epoch", EPOCH);
+                }
+            } catch (e) {}
+        })();
+
         // Task Database Array Structure
         let submissions = safeStore.read('vgd_submissions') || {};
         let dayNotes = safeStore.read('vgd_daynotes') || {};
@@ -818,7 +833,7 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
         }
 
         function persistMasterConfig() {
-            safeStore.write("vgd_master_config", { cancelledDates: liveState.cancelledDates, announcement: liveState.announcement || "", telemetry: liveState.telemetry });
+            safeStore.write("vgd_master_config", { cancelledDates: liveState.cancelledDates, announcement: liveState.announcement || "", announcementDay: liveState.announcementDay || "", telemetry: liveState.telemetry });
         }
 
         function syncAdminConsole() {
@@ -893,8 +908,9 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
             const field = document.getElementById("adminAnnouncementInput");
             const text = (field.value || "").trim();
             liveState.announcement = text;
+            liveState.announcementDay = text ? (function () { const n = new Date(); return n.getFullYear() + "-" + pad2(n.getMonth() + 1) + "-" + pad2(n.getDate()); })() : "";
             persistMasterConfig();
-            GLOBAL_NETWORK_EMITTER.broadcast({ cancelledDates: liveState.cancelledDates, announcement: liveState.announcement, telemetry: liveState.telemetry });
+            GLOBAL_NETWORK_EMITTER.broadcast({ cancelledDates: liveState.cancelledDates, announcement: liveState.announcement, announcementDay: liveState.announcementDay || "", telemetry: liveState.telemetry });
             updateAlert();
             chime(text ? "attend" : "off");
             logAdminPrompt(text ? "Global class announcement broadcast to all student link launchers." : "Global class announcement cleared from all launchers.", true);
@@ -1031,7 +1047,8 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
                     alert("✨ Success! Your message and portfolio files have been dispatched to your instructor.");
                     document.getElementById('studentFeedbackMsg').value = "";
                     document.getElementById('studentFeedbackFile').value = "";
-                    document.getElementById('feedbackFileName').innerText = "No file...";
+                    const fbResetEl = document.getElementById('feedbackFileName');
+                    if (fbResetEl) fbResetEl.innerText = "No file...";
                     feedbackFileBase64 = "";
                 } else {
                     alert("❌ Transmission failure. Please check your internet connection.");
@@ -1076,7 +1093,8 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
         // Glue: feeds the local dashboard inbox + trainer link launchers alongside any live send
         function queueFeedbackForDashboard(studentName, msg) {
             const now = new Date();
-            const shown = document.getElementById('feedbackFileName').innerText || "";
+            const fbNameEl = document.getElementById('feedbackFileName');
+            const shown = fbNameEl ? (fbNameEl.innerText || "") : "";
             const entry = {
                 id: "fb-" + now.getTime() + "-" + Math.floor(Math.random() * 1000),
                 when: now.toISOString(),
@@ -1862,7 +1880,7 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
                 if (!payload || typeof payload !== "object") return;
                 if (payload.type === "presence-local") return; // local-only liveness never hits the relay
                 // Presence yields first under relay pressure — state sync keeps strict priority
-                if (payload.type === "presence" && Date.now() < relayBackoffUntil) return;
+                if ((payload.type === "presence" || payload.type === "sync-request") && Date.now() < relayBackoffUntil) return;
                 const packet = Object.assign({}, payload);
                 packet.sender = RELAY_CLIENT_ID;
                 packet.sentAt = Date.now();
@@ -1899,8 +1917,9 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
         }
 
         function flushRelayOutbox() {
-            // Retries queued instructor state once the relay window re-opens
-            if (!relayOutbox.length || Date.now() < relayBackoffUntil) return;
+            // Trickle-retries queued instructor state — the trainer’s pushes always get out
+            if (!relayOutbox.length || Date.now() - lastOutboxAttemptAt < 45000) return;
+            lastOutboxAttemptAt = Date.now();
             cloudRelayPublish(relayOutbox.shift());
         }
 
@@ -1916,12 +1935,24 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
                 }
                 const payload = JSON.parse(ev.message);
                 if (!payload || payload.sender === RELAY_CLIENT_ID) return;
+                // Past-is-past gate: stale traffic (replays, cached history) never reaches state
+                if (payload.sentAt && Date.now() - payload.sentAt > 300000) return;
+                if (payload.announcement && !payload.announcementDay && payload.sentAt) {
+                    const pd = new Date(payload.sentAt);
+                    payload.announcementDay = pd.getFullYear() + "-" + pad2(pd.getMonth() + 1) + "-" + pad2(pd.getDate());
+                }
                 if (payload.type === "sync-request") {
-                    // Late joiner asking for authoritative state — any launcher holding it answers
-                    if (safeStore.read("vgd_master_config")) {
-                        // syncReply marks reconciliation packets so clients converge silently (no pop-outs)
-                        cloudRelayPublish({ cancelledDates: liveState.cancelledDates, announcement: liveState.announcement || "", telemetry: liveState.telemetry, syncReply: 1 });
-                    }
+                    // Late joiner asking for authoritative state — ONE quiet responder answers after
+                    // a short random delay (collapses N x N reply storms down to ~1 packet)
+                    if (!safeStore.read("vgd_master_config")) return;
+                    if (Date.now() - lastSyncReplyAt < 45000) return;
+                    lastSyncReplyAt = Date.now();
+                    const waitMs = 300 + Math.floor(Math.random() * 1700);
+                    setTimeout(function () {
+                        if (Date.now() - lastStateAppliedAt < 2500) return; // someone already answered
+                        if (!safeStore.read("vgd_master_config")) return;
+                        cloudRelayPublish({ cancelledDates: liveState.cancelledDates, announcement: liveState.announcement || "", announcementDay: liveState.announcementDay || "", telemetry: liveState.telemetry, syncReply: 1 });
+                    }, waitMs);
                     return;
                 }
                 GLOBAL_NETWORK_EMITTER.deserialize(payload);
@@ -1932,7 +1963,7 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
             // Live push stream (SSE with full cache replay for late joiners)
             try {
                 if (typeof EventSource !== "undefined") {
-                    cloudRelaySource = new EventSource(CLOUD_RELAY_BASE + "/" + CLOUD_RELAY_TOPIC + "/sse?since=all");
+                    cloudRelaySource = new EventSource(CLOUD_RELAY_BASE + "/" + CLOUD_RELAY_TOPIC + "/sse");
                     cloudRelaySource.onmessage = function (e) { cloudRelayIngest(e.data); };
                     cloudRelaySource.onerror = function () { /* EventSource auto-reconnects */ };
                 }
@@ -1940,7 +1971,7 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
             // Reconciliation sweep — catches anything the push stream missed (id-deduped)
             setInterval(function () {
                 try {
-                    fetch(CLOUD_RELAY_BASE + "/" + CLOUD_RELAY_TOPIC + "/json?poll=1")
+                    fetch(CLOUD_RELAY_BASE + "/" + CLOUD_RELAY_TOPIC + "/json?poll=1&since=5m")
                         .then(function (r) { return r.json(); })
                         .then(function (data) {
                             const msgs = (data && Array.isArray(data.messages)) ? data.messages : [];
@@ -2001,6 +2032,7 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
                 if (payload.telemetry && typeof payload.telemetry === "object") {
                     applyTelemetryUpdate(payload.telemetry);
                 }
+                lastStateAppliedAt = Date.now();
                 const incoming = Array.isArray(payload.cancelledDates) ? payload.cancelledDates : null;
                 const incomingAnn = (typeof payload.announcement === "string") ? payload.announcement : null;
                 if (!incoming && incomingAnn === null) return;
@@ -2011,7 +2043,10 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
                 const annChanged = (incomingAnn !== null && incomingAnn !== (liveState.announcement || ""));
                 if (before !== after || annChanged) {
                     if (incoming) liveState.cancelledDates = incoming.slice();
-                    if (incomingAnn !== null) liveState.announcement = incomingAnn;
+                    if (incomingAnn !== null) {
+                        liveState.announcement = incomingAnn;
+                        liveState.announcementDay = payload.announcementDay || "";
+                    }
                     persistMasterConfig();
                     rebuildCancellationOverrides();
                     renderCalendar();
@@ -2354,6 +2389,20 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
             if (!menu.contains(e.target)) closeViewModeMenu();
         });
 
+        let lastSyncReplyAt = 0;
+        let lastStateAppliedAt = 0;
+        let lastOutboxAttemptAt = 0;
+
+        function maybeSyncRequest() {
+            // One polite catch-up request per device per 10 minutes (class cold-starts stay quiet)
+            try {
+                const last = Number(safeStore.read("vgd_sync_req_at")) || 0;
+                if (Date.now() - last < 600000) return;
+                safeStore.write("vgd_sync_req_at", Date.now());
+            } catch (e) {}
+            cloudRelayPublish({ type: "sync-request" });
+        }
+
         /* ---------------- Initialization Layer ---------------- */
         function initApp() {
             // Restore persisted master configuration into live state
@@ -2369,12 +2418,23 @@ body.theme-light .text-\[\#8E8E93\] { color: #6E6E73 !important; }
 
             // Cross-device relay: join the shared topic, then ask online launchers for authoritative state
             cloudRelaySubscribe();
-            cloudRelayPublish({ type: "sync-request" });
+            maybeSyncRequest();
 
             // A student opening the link: the freshly fetched emitter payload enters de-serialization
             restoringState = true;
             if (savedConfig) GLOBAL_NETWORK_EMITTER.deserialize(savedConfig);
             restoringState = false;
+
+            // Blank-slate hygiene: yesterday’s announcements and spent cancellations never surface
+            const todayD = new Date();
+            const todayKey = todayD.getFullYear() + "-" + pad2(todayD.getMonth() + 1) + "-" + pad2(todayD.getDate());
+            if (liveState.announcement && liveState.announcementDay !== todayKey) {
+                liveState.announcement = "";
+                liveState.announcementDay = "";
+            }
+            liveState.cancelledDates = (liveState.cancelledDates || []).filter(function (d) { return typeof d === "string" && d >= todayKey; });
+            rebuildCancellationOverrides();
+            persistMasterConfig();
 
             const savedSound = safeStore.read("vgd_sound");
             setSound(savedSound === false ? false : true);
